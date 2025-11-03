@@ -1,0 +1,36 @@
+version: '3.9'
+
+services:
+  meuprojetoapi: 
+    image: ${DOCKER_REGISTRY-}meuprojetoapi
+    build:
+      context: .
+      dockerfile: MeuProjetoApi/Dockerfile
+    ports:
+      - "5000:8080"
+    depends_on:
+      - sqlserver-dev 
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      
+      # 1. INJEÇÃO DA CHAVE SECRETA (CORRETA)
+      - Cpf:EncryptionKey=O_conhecimento_liberta_e_transfo
+      
+      # 2. INJEÇÃO DA CONNECTION STRING (SOBRESCREVE o appsettings quando em Docker)
+      # Nota: Usamos o nome do serviço 'sqlserver-dev' como o endereço do servidor.
+      - ConnectionStrings__DefaultConnection=Server=sqlserver-dev;Database=MeuPrimeiroDB;User Id=sa;Password=Ijstech1*;Encrypt=False;TrustServerCertificate=True
+
+  sqlserver-dev: 
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sqlserver-persistente
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Ijstech1*" 
+    volumes:
+      - mssql_data:/var/opt/mssql
+    restart: unless-stopped
+
+volumes:
+  mssql_data:
