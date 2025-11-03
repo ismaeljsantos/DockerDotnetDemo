@@ -1,4 +1,5 @@
-﻿using NUlid;
+﻿using MeuProjetoApi.Models;
+using NUlid;
 
 namespace MeuProjetoApi.DTOs
 {

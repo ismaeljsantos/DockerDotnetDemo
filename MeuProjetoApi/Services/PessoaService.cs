@@ -1,4 +1,6 @@
-﻿using MeuProjetoApi.Data;
+﻿// Arquivo: MeuProjetoApi/Services/PessoaService.cs (Conteúdo Corrigido)
+
+using MeuProjetoApi.Data;
 using MeuProjetoApi.DTOs;
 using MeuProjetoApi.Models;
 using MeuProjetoApi.Services.Interfaces;
@@ -27,7 +29,7 @@ namespace MeuProjetoApi.Services
             const int MaximoTelefones = 2;
             const int MaximoEmail = 2;
 
-            // --- VALIDAÇÕES DE LIMITE ---
+            // --- VALIDAÇÕES DE LIMITE (mantidas) ---
             if (dto.Enderecos != null && dto.Enderecos.Count > MaximoEnderecos)
                 throw new InvalidOperationException($"Regra de Negócio: O número máximo de endereços permitidos é {MaximoEnderecos}");
 
@@ -42,7 +44,6 @@ namespace MeuProjetoApi.Services
                 if (countEmails > MaximoEmail)
                     throw new InvalidOperationException($"Regra de Negócio: O número máximo de Emails permitidos é {MaximoEmail}");
 
-                // Validação de Prioridade (Apenas um Principal por Tipo)
                 if (dto.Contatos.Count(c => (c.Tipo.Equals("Telefone", StringComparison.OrdinalIgnoreCase) || c.Tipo.Equals("Celular", StringComparison.OrdinalIgnoreCase)) && c.IsPrincipal) > 1)
                     throw new InvalidOperationException("Regra de Prioridade: Apenas um contato de telefone pode ser definido como Principal.");
 
@@ -56,8 +57,8 @@ namespace MeuProjetoApi.Services
 
             string cpfLimpo = dto.Cpf;
 
-            // --- SEGURANÇA E UNICIDADE ---
-            string cpfHash = _cpfSecurity.GerarHash(cpfLimpo); // Uso estático é aceitável, mas pode ser ajustado
+            // --- SEGURANÇA E UNICIDADE (mantidas) ---
+            string cpfHash = _cpfSecurity.GerarHash(cpfLimpo);
             string cpfCriptografado = _cpfSecurity.Criptografar(cpfLimpo);
 
             var cpfExistente = await _context.Pessoas.AsNoTracking().FirstOrDefaultAsync(p => p.CpfHash == cpfHash);
@@ -75,8 +76,9 @@ namespace MeuProjetoApi.Services
                 CpfHash = cpfHash,
                 CpfCriptografado = cpfCriptografado,
             };
+            var pessoaId = novaPessoa.Id;
 
-            // --- COLEÇÕES ANINHADAS ---
+            // --- COLEÇÕES ANINHADAS (Endereços e Contatos) ---
             if (dto.Enderecos != null && dto.Enderecos.Any())
             {
                 var enderecos = dto.Enderecos.Select(eDto => new Endereco
@@ -88,7 +90,8 @@ namespace MeuProjetoApi.Services
                     Cidade = eDto.Cidade,
                     Estado = eDto.Estado,
                     Cep = eDto.Cep,
-                    IsPrincipal = eDto.IsPrincipal
+                    IsPrincipal = eDto.IsPrincipal,
+                    FkPessoaId = pessoaId // JÁ ESTAVA CORRETO
                 }).ToList();
                 novaPessoa.Enderecos = enderecos;
             }
@@ -100,24 +103,34 @@ namespace MeuProjetoApi.Services
                     Tipo = cDto.Tipo,
                     Valor = cDto.Valor,
                     Observacao = cDto.Observacao,
-                    IsPrincipal = cDto.IsPrincipal
+                    IsPrincipal = cDto.IsPrincipal,
+                    FkPessoaId = pessoaId // JÁ ESTAVA CORRETO
                 }).ToList();
                 novaPessoa.Contatos = contatos;
             }
 
-            // --- ESCOLARIDADE (UPSERT/VALICAÇÃO) ---
+            // --- ESCOLARIDADE (UPSERT) ---
             if (dto.Escolaridades != null && dto.Escolaridades.Any())
             {
-                var escolaridadesTemporarias = new List<Escolaridade>(); // Lista temporária
                 foreach (var eDto in dto.Escolaridades)
                 {
                     var instituicao = await GetOrCreateInstituicaoAsync(eDto.NomeInstituicao);
 
-                    // ... (Validação de Obrigatoriedade) ...
+                    // Validação de Obrigatoriedade
+                    if (eDto.Tipo.Equals("Superior", StringComparison.OrdinalIgnoreCase) ||
+                        eDto.Tipo.Equals("Profissionalizante", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (!eDto.AnoInicio.HasValue || !eDto.AnoConclusao.HasValue)
+                        {
+                            throw new InvalidOperationException($"Regra de Negócio: Para o tipo {eDto.Tipo}, os campos AnoInicio e AnoConclusao são obrigatórios.");
+                        }
+                    }
 
-                    escolaridadesTemporarias.Add(new Escolaridade
+                    // 🛑 CORREÇÃO: Adiciona diretamente, e AGORA COM O FkPessoaId
+                    novaPessoa.Escolaridades.Add(new Escolaridade
                     {
                         Instituicao = instituicao,
+                        FkPessoaId = pessoaId, // <--- NOVA CORREÇÃO APLICADA AQUI
                         Tipo = eDto.Tipo,
                         NomeCurso = eDto.NomeCurso,
                         AnoInicio = eDto.AnoInicio,
@@ -125,46 +138,43 @@ namespace MeuProjetoApi.Services
                         Ativo = true
                     });
                 }
-
-                // 🛑 CORREÇÃO: Usar AddRange na coleção da novaPessoa
-                ((List<Escolaridade>)novaPessoa.Escolaridades).AddRange(escolaridadesTemporarias);
-
-                // NOTA: Se novaPessoa.Escolaridades for ICollection<T> = new List<T>(), este AddRange é seguro.
             }
 
             // --- EXPERIÊNCIA PROFISSIONAL (UPSERT) ---
             if (dto.Experiencias != null && dto.Experiencias.Any())
             {
-                var experienciasTemporarias = new List<ExperienciaProfissional>(); // Lista temporária
                 foreach (var expDto in dto.Experiencias)
                 {
                     var empresa = await GetOrCreateEmpresaAsync(expDto.NomeEmpresa);
-                    experienciasTemporarias.Add(new ExperienciaProfissional
+
+                    // 🛑 CORREÇÃO: Adiciona diretamente, e AGORA COM O FkPessoaId
+                    novaPessoa.Experiencias.Add(new ExperienciaProfissional
                     {
                         Empresa = empresa,
+                        FkPessoaId = pessoaId, // <--- NOVA CORREÇÃO APLICADA AQUI
                         Funcao = expDto.Funcao,
                         AnoEntrada = expDto.AnoEntrada,
                         AnoSaida = expDto.AnoSaida,
                     });
                 }
-
-                // 🛑 CORREÇÃO: Usar AddRange na coleção da novaPessoa
-                ((List<ExperienciaProfissional>)novaPessoa.Experiencias).AddRange(experienciasTemporarias);
             }
 
             // --- SALVAR TUDO ---
             _context.Pessoas.Add(novaPessoa);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(); // Agora deve funcionar, pois todas as FKs estão setadas
 
             return novaPessoa;
         }
 
-        // --- MÉTODOS DE UPSERT ---
+        // --- MÉTODOS DE UPSERT (Já corrigidos com ToLower() no seu código) ---
 
         private async Task<Instituicao> GetOrCreateInstituicaoAsync(string nomeInstituicao)
         {
+            var nomeInstituicaoLower = nomeInstituicao.ToLower();
+
             var instituicao = await _context.Instituicoes
-                                            .FirstOrDefaultAsync(i => i.Nome.Equals(nomeInstituicao, StringComparison.OrdinalIgnoreCase));
+                                            .FirstOrDefaultAsync(i => i.Nome.ToLower() == nomeInstituicaoLower);
+
             if (instituicao != null) return instituicao;
 
             return new Instituicao { Nome = nomeInstituicao };
@@ -172,8 +182,11 @@ namespace MeuProjetoApi.Services
 
         private async Task<Empresa> GetOrCreateEmpresaAsync(string nomeEmpresa)
         {
+            var nomeEmpresaLower = nomeEmpresa.ToLower();
+
             var empresa = await _context.Empresas
-                                         .FirstOrDefaultAsync(e => e.Nome.Equals(nomeEmpresa, StringComparison.OrdinalIgnoreCase));
+                                         .FirstOrDefaultAsync(e => e.Nome.ToLower() == nomeEmpresaLower);
+
             if (empresa != null) return empresa;
 
             return new Empresa { Nome = nomeEmpresa };

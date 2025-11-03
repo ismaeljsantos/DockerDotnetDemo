@@ -11,13 +11,8 @@ services:
     depends_on:
       - sqlserver-dev 
     environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      
-      # 1. INJEÇÃO DA CHAVE SECRETA (CORRETA)
+      - ASPNETCORE_ENVIRONMENT=Development      
       - Cpf:EncryptionKey=O_conhecimento_liberta_e_transfo
-      
-      # 2. INJEÇÃO DA CONNECTION STRING (SOBRESCREVE o appsettings quando em Docker)
-      # Nota: Usamos o nome do serviço 'sqlserver-dev' como o endereço do servidor.
       - ConnectionStrings__DefaultConnection=Server=sqlserver-dev;Database=MeuPrimeiroDB;User Id=sa;Password=Ijstech1*;Encrypt=False;TrustServerCertificate=True
 
   sqlserver-dev: 
